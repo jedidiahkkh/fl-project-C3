@@ -1,12 +1,18 @@
 """CNN model architecture, training, and testing functions for CIFAR-10."""
 
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 from torchvision.models import resnet18
 
-from project.types.common import NetGen
+from project.fed.utils.utils import generic_set_parameters, load_parameters_from_file
+from project.types.common import IsolatedRNG, NetGen
 from project.utils.utils import lazy_config_wrapper
+
+from flwr.common.logger import log
+from flwr.common import parameters_to_ndarrays
+import logging
 
 
 class Net(nn.Module):
@@ -64,7 +70,21 @@ class CNN(nn.Module):
 
 # Simple wrapper to match the NetGenerator Interface
 get_net: NetGen = lazy_config_wrapper(Net)
-get_cnn: NetGen = lazy_config_wrapper(CNN)
+# get_cnn: NetGen = lazy_config_wrapper(CNN)
+
+
+def get_cnn(config: dict, _rng_tuple: IsolatedRNG) -> nn.Module:
+    """Get 3 layer CNN."""
+    initial_params = config.get("load_from_file")
+    net = CNN()
+    if initial_params is None:
+        return net
+    else:
+        log(logging.INFO, "loading parameters from %s", initial_params)
+        params = parameters_to_ndarrays(load_parameters_from_file(Path(initial_params)))
+        generic_set_parameters(net, params)
+        return net
+
 
 get_resnet: NetGen = lambda _config, _rng_tuple: resnet18(  # noqa: E731
     weights=None, progress=False, num_classes=10

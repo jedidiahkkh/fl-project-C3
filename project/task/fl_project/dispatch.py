@@ -29,9 +29,17 @@ from project.task.default.dispatch import (
     dispatch_config as dispatch_default_config,
     init_working_dir as init_working_dir_default,
 )
-from project.task.fl_project.dataset import get_dataloader_generators
+from project.task.fl_project.dataset import (
+    get_dataloader_generators,
+    get_dataloader_generators_centralised_test,
+)
 from project.task.fl_project.models import get_net, get_resnet, get_cnn
-from project.task.fl_project.train_test import get_fed_eval_fn, test, train
+from project.task.fl_project.train_test import (
+    get_fed_eval_fn,
+    test,
+    train,
+    test_with_more_stuff,
+)
 from project.types.common import DataStructure, TrainStructure
 
 
@@ -68,9 +76,16 @@ def dispatch_train(
         None,
     )
 
+    prepare = cfg.get("task", {}).get("prepare", None)
+    if prepare is None:
+        return None
+
     # Only consider not None and uppercase matches
     if train_structure is not None and train_structure.upper() == "CIFAR":
-        return train, test, get_fed_eval_fn
+        if prepare:
+            return train, test, get_fed_eval_fn
+        else:
+            return train, test_with_more_stuff, get_fed_eval_fn
 
     # Cannot match, send to next dispatch in chain
     return None
@@ -137,17 +152,17 @@ def dispatch_data(cfg: DictConfig, **kwargs: Any) -> DataStructure | None:
             return None
 
         if not prepare:
-            concentration = cfg.get("concentration", None)
-            epoch = cfg.get("net_config_initial_parameters", {}).get("epoch", None)
+            concentration = cfg.get("task", {}).get("concentration", None)
 
-            if concentration is None or epoch is None:
+            if concentration is None:
                 return None
             # Obtain the dataloader generators
             # for the provided partition dir
+            # use the centralised test set for any evaluations
             (
                 client_dataloader_gen,
                 fed_dataloader_gen,
-            ) = get_dataloader_generators(
+            ) = get_dataloader_generators_centralised_test(
                 Path(partition_dir) / str(concentration), Path(partition_dir)
             )
             return (

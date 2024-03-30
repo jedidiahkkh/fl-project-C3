@@ -6,7 +6,7 @@ from typing import cast
 
 import torch
 from pydantic import BaseModel
-from torch import nn
+from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
 from project.task.default.train_test import get_fed_eval_fn as get_default_fed_eval_fn
@@ -205,3 +205,94 @@ def test(
 get_fed_eval_fn = get_default_fed_eval_fn
 get_on_fit_config_fn = get_default_on_fit_config_fn
 get_on_evaluate_config_fn = get_default_on_evaluate_config_fn
+
+
+def test_with_more_stuff(
+    net: nn.Module,
+    testloader: DataLoader,
+    _config: dict,
+    _working_dir: Path,
+    rng_tuple: IsolatedRNG,
+) -> tuple[float, int, dict]:
+    """Evaluate the network on the test set.
+
+    Parameters
+    ----------
+    net : nn.Module
+        The neural network to test.
+    testloader : DataLoader
+        The DataLoader containing the data to test the network on.
+    _config : Dict
+        The configuration for the testing.
+        Contains the device.
+        Static type checking is done by the TestConfig class.
+    _working_dir : Path
+        The working directory for the training.
+        Unused.
+    _rng_tuple : IsolatedRNGTuple
+        The random number generator state for the training.
+        Use if you need seeded random behavior
+
+
+    Returns
+    -------
+    Tuple[float, int, float]
+        The loss, number of test samples,
+        and the accuracy of the input model on the given data.
+    """
+    if len(cast(Sized, testloader.dataset)) == 0:
+        raise ValueError(
+            "Testloader can't be 0, exiting...",
+        )
+
+    config: TestConfig = TestConfig(**_config)
+    del _config
+
+    net.to(config.device)
+    net.eval()
+
+    criterion = nn.CrossEntropyLoss()
+    correct, per_sample_loss = 0, 0.0
+    collated_outputs: Tensor = None  # type: ignore[assignment]
+
+    with torch.no_grad():
+        for images, labels in testloader:
+            images, labels = (
+                images.to(
+                    config.device,
+                ),
+                labels.to(config.device),
+            )
+            shape = images[0].shape
+            outputs = net(images)
+            if collated_outputs is None:
+                collated_outputs = outputs
+            else:
+                collated_outputs = torch.concatenate([collated_outputs, outputs])
+            per_sample_loss += criterion(
+                outputs,
+                labels,
+            ).item()
+            _, predicted = torch.max(outputs.data, 1)
+            correct += (predicted == labels).sum().item()
+
+        noise = (
+            torch.rand(((5,) + shape), generator=rng_tuple[3]) * 2 - 1
+        )  # use the range [-1,1] because that's what our model expects
+        noise_output = net(noise.to(config.device))
+        noise_result = noise_output.mean(axis=0).cpu()
+        noise_std_dev = noise_output.std(axis=0).cpu()
+        collated_result = collated_outputs.mean(axis=0).cpu()
+        collated_std_dev = collated_outputs.std(axis=0).cpu()
+
+    return (
+        per_sample_loss / len(cast(Sized, testloader.dataset)),
+        len(cast(Sized, testloader.dataset)),
+        {
+            "test_accuracy": float(correct) / len(cast(Sized, testloader.dataset)),
+            "noise_result": noise_result.numpy().tolist(),
+            "noise_std_dev": noise_std_dev.numpy().tolist(),
+            "collated_result": collated_result.numpy().tolist(),
+            "collated_std_dev": collated_std_dev.numpy().tolist(),
+        },
+    )

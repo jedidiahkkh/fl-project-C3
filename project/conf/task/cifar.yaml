@@ -15,11 +15,11 @@ fit_config:
   net_config: {}
   # Dataloader requires batch_size
   dataloader_config:
-    batch_size: 4
+    batch_size: 50
   # The train function requires epochs and learning_rate
   run_config:
     epochs: 1
-    learning_rate: 0.03
+    learning_rate: 0.01
   # No extra config
   extra: {}
 
@@ -28,7 +28,7 @@ eval_config:
   net_config: {}
   # The testing function batch size can be as high as the GPU supports
   dataloader_config:
-    batch_size: 8
+    batch_size: 50
   # Unlike train, the mnist train function takes no parameters
   run_config: {}
   extra: {}
@@ -39,7 +39,7 @@ fed_test_config:
   net_config: {}
   # The testing function batch size can be as high as the GPU supports
   dataloader_config:
-    batch_size: 8
+    batch_size: 50
   # Unlike train, the mnist train function takes no parameters
   run_config: {}
   extra: {}
@@ -47,7 +47,7 @@ fed_test_config:
 # Configuration instructions for initial parameter
 # generation
 net_config_initial_parameters:
-  epoch: last
+  load_from_file: multirun/2024-03-29/00-00-46/1/results/state/parameters/parameters_5.bin
 
 # The names of metrics you wish to aggregate
 fit_metrics: [train_loss, train_accuracy]

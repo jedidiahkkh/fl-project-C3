@@ -74,10 +74,10 @@ def _partition_data(
         A list of dataset for each client and a single dataset to be used for testing
         the model.
     """
-    x = np.array(trainset.data)
+    x = np.array([x[0] for x in trainset])
     y = np.array(trainset.targets)
 
-    datasets = create_lda_partitions(
+    partitions, _dist = create_lda_partitions(
         dataset=(x, y),
         dirichlet_dist=None,
         num_partitions=num_clients,
@@ -86,11 +86,7 @@ def _partition_data(
         seed=seed,
     )
 
-    partitions = [
-        (datasets[0][i], datasets[1][i]) for i in range(num_clients)
-    ]  # ignore-type
-
-    return partitions, testset
+    return [list(zip(x, y, strict=True)) for x, y in partitions], testset
 
 
 @hydra.main(
