@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
+from ignite.metrics.confusion_matrix import ConfusionMatrix
+
 from project.task.default.train_test import get_fed_eval_fn as get_default_fed_eval_fn
 from project.task.default.train_test import (
     get_on_evaluate_config_fn as get_default_on_evaluate_config_fn,
@@ -255,6 +257,9 @@ def test_with_more_stuff(
     correct, per_sample_loss = 0, 0.0
     collated_outputs: Tensor = None  # type: ignore[assignment]
 
+    cm = ConfusionMatrix(num_classes=10)
+    cm.reset()
+
     with torch.no_grad():
         for images, labels in testloader:
             images, labels = (
@@ -265,6 +270,7 @@ def test_with_more_stuff(
             )
             shape = images[0].shape
             outputs = net(images)
+            cm.update((outputs, labels))
             if collated_outputs is None:
                 collated_outputs = outputs
             else:
@@ -276,6 +282,7 @@ def test_with_more_stuff(
             _, predicted = torch.max(outputs.data, 1)
             correct += (predicted == labels).sum().item()
 
+        confusion = cm.compute()
         noise = (
             torch.rand(((5,) + shape), generator=rng_tuple[3]) * 2 - 1
         )  # use the range [-1,1] because that's what our model expects
@@ -294,5 +301,6 @@ def test_with_more_stuff(
             "noise_std_dev": noise_std_dev.numpy().tolist(),
             "collated_result": collated_result.numpy().tolist(),
             "collated_std_dev": collated_std_dev.numpy().tolist(),
+            "confusion_matrix": confusion.numpy().tolist(),
         },
     )

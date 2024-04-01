@@ -2,15 +2,18 @@
 
 from flwr.common import (
     EvaluateIns,
+    EvaluateRes,
     FitIns,
     FitRes,
     Parameters,
+    Scalar,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
+from flwr.server.strategy.aggregate import weighted_loss_avg
 from flwr.common.typing import NDArrays
 import numpy as np
 
@@ -41,6 +44,7 @@ class IMA(FedAvg):
         self.ima_lr_decay = ima_lr_decay
         self.parameter_history: list[NDArrays] = []
         self.lr: float = (kwargs["on_fit_config_fn"])(0)["run_config"]["learning_rate"]  # type: ignore[operator]
+        self.client_params: dict[str, Parameters] = {}
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -85,13 +89,15 @@ class IMA(FedAvg):
         if self.on_evaluate_config_fn is not None:
             # Custom evaluation config function provided
             config = self.on_evaluate_config_fn(server_round)
-        evaluate_ins = EvaluateIns(parameters, config)
 
         # use the same clients as fitted for evaluation
         clients = self.clients
 
         # Return client/config pairs
-        return [(client, evaluate_ins) for client in clients]
+        return [
+            (client, EvaluateIns(self.client_params[client.cid], config))
+            for client in clients
+        ]
 
     def aggregate_fit(
         self,
@@ -106,6 +112,7 @@ class IMA(FedAvg):
             return result
 
         params = result[0]
+        self.client_params = {client.cid: res.parameters for client, res in results}
 
         if server_round >= self.ima_start_round - self.window_size:
             self.parameter_history += [parameters_to_ndarrays(params)]
@@ -121,3 +128,39 @@ class IMA(FedAvg):
             params = ndarrays_to_parameters(moving_avg)
 
         return params, result[1]
+
+    def aggregate_evaluate(
+        self,
+        server_round: int,
+        results: list[tuple[ClientProxy, EvaluateRes]],
+        failures: list[tuple[ClientProxy, EvaluateRes] | BaseException],
+    ) -> tuple[float | None, dict[str, Scalar]]:
+        """Aggregate evaluation losses using weighted average."""
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
+
+        # Aggregate loss
+        loss_aggregated = weighted_loss_avg([
+            (evaluate_res.num_examples, evaluate_res.loss)
+            for _, evaluate_res in results
+        ])
+
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+        if self.evaluate_metrics_aggregation_fn:
+            eval_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            metrics_aggregated = self.evaluate_metrics_aggregation_fn(eval_metrics)
+        # elif server_round == 1:  # Only log this warning once
+        #     log(WARNING, "No evaluate_metrics_aggregation_fn provided")
+
+        unaggregate = {}
+        for key in results[0][1].metrics:
+            unaggregate[key] = [
+                (client.cid, res.metrics[key]) for client, res in results  # type: ignore[assignment]
+            ]
+        metrics_aggregated["unaggregate"] = unaggregate  # type: ignore[assignment]
+
+        return loss_aggregated, metrics_aggregated

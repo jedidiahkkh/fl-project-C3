@@ -2,7 +2,7 @@
 # These strings are constants used by the dispatcher to select functionality at runtime
 # Please implement all behaviour in the task-level dispatch.py file and then add the dispatch functions to the top-level dispatch.py
 # Choose the model and dataset
-model_and_data: CIFAR_CNN
+model_and_data: CIFAR_CNN3
 prepare: false
 # 0.1, 1.0, 1000.0
 concentration: 0.1
@@ -47,8 +47,16 @@ fed_test_config:
 # Configuration instructions for initial parameter
 # generation
 net_config_initial_parameters:
+  # {}
   load_from_file: multirun/2024-03-29/00-00-46/1/results/state/parameters/parameters_5.bin
 
 # The names of metrics you wish to aggregate
 fit_metrics: [train_loss, train_accuracy]
-evaluate_metrics: [test_accuracy]
+
+evaluate_metrics:
+  - test_accuracy
+  # - noise_result
+  # - noise_std_dev
+  # - collated_result
+  # - collated_std_dev
+  # - confusion_matrix

@@ -4,7 +4,7 @@ name: FedAvg
 init:
   _target_: project.fed.server.strategy.strategy.IMA
   window_size: 5
-  ima_start_round: 37
+  ima_start_round: 150
   lr_decay: 0.01
   ima_lr_decay: 0.03
   # server_learning_rate: 0.01
